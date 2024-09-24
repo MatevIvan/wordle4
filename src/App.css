@@ -101,7 +101,7 @@ button {
 }
 
 #correct-letter {
-  background-color: rgb(150, 255, 50);
+  background-color: green;
 }
 
 #warning-letter {

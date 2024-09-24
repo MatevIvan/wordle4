@@ -5257,6 +5257,8 @@ export function wordExists(testWord) {
     "double",
     "crusty",
     "cramps",
+    "enacts",
+    "coined",
   ];
 
   if (words.includes(testWord)) {
