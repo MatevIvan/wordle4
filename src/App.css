@@ -121,6 +121,19 @@ button:disabled {
   cursor: wait;
   opacity: 0.65;
 }
+
+.box,
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
 .btn {
   max-width: 50px;
   max-height: 50px;
@@ -152,6 +165,7 @@ button:disabled {
 .function {
   width: auto;
   max-width: fit-content;
+  padding-inline: 1rem;
 }
 
 #correct-letter {
