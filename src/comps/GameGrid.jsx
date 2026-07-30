@@ -16,6 +16,7 @@ const GameGrid = () => {
   const [index, setIndex] = useState(0);
   const [secretWord, setSecretWord] = useState("");
   const [isLoadingWord, setIsLoadingWord] = useState(true);
+  const [isUsingLocalDictionary, setIsUsingLocalDictionary] = useState(false);
   const [wordNotice, setWordNotice] = useState("");
   const [warningLetters, setWarningLetters] = useState([]);
   const [correctLetters, setCorrectLetters] = useState([]);
@@ -39,10 +40,14 @@ const GameGrid = () => {
       if (guessedWord.length < secretWord.length) {
         setPopupMessage(`Enter a ${secretWord.length}-letter word.`);
       } else {
-        setPopupMessage("That word is not in the accepted word list.");
+        setPopupMessage(
+          isUsingLocalDictionary
+            ? "That word is not in the local dictionary."
+            : "That word was not recognized.",
+        );
       }
     },
-    [secretWord.length],
+    [isUsingLocalDictionary, secretWord.length],
   );
 
   const loadSecretWord = useCallback(async () => {
@@ -51,6 +56,7 @@ const GameGrid = () => {
     wordRequestRef.current = controller;
 
     setIsLoadingWord(true);
+    setIsUsingLocalDictionary(false);
     setWordNotice("");
 
     try {
@@ -68,6 +74,7 @@ const GameGrid = () => {
 
       console.warn("Unable to load a word from Word Checker:", error);
       setSecretWord(randomWord());
+      setIsUsingLocalDictionary(true);
       setWordNotice("Word Checker unavailable. Using the offline word list.");
     } finally {
       if (!controller.signal.aborted) {
@@ -98,7 +105,7 @@ const GameGrid = () => {
 
     let isAcceptedGuess = guessedWord === secretWord || wordExists(guessedWord);
 
-    if (!isAcceptedGuess) {
+    if (!isAcceptedGuess && !isUsingLocalDictionary) {
       const controller = new AbortController();
       guessRequestRef.current = controller;
       setIsCheckingWord(true);
@@ -164,6 +171,7 @@ const GameGrid = () => {
     correctLetters,
     gameHistory,
     gameReady,
+    isUsingLocalDictionary,
     secretWord,
     showGuessError,
   ]);
