@@ -1,13 +1,21 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { randomWord, testLetter, wordExists, wordValue } from "./helpers/Helpers";
+import { getRandomWord } from "../services/wordChecker";
 import ScoreCard from "./ScoreCard";
 import VirtKeys from "./VirtKeys";
 
+const WORD_LENGTH = 6;
+const MAX_ATTEMPTS = 6;
+const createEmptyHistory = () =>
+  Array.from({ length: MAX_ATTEMPTS }, () => new Array(WORD_LENGTH).fill(""));
+
 const GameGrid = () => {
-  const [gameHistory, setGameHistory] = useState(Array.from(Array(6), () => new Array(6).fill("")));
+  const [gameHistory, setGameHistory] = useState(createEmptyHistory);
   const [attemptNumber, setAttemptNumber] = useState(0);
   const [index, setIndex] = useState(0);
-  const [secretWord, setSecretWord] = useState(randomWord());
+  const [secretWord, setSecretWord] = useState("");
+  const [isLoadingWord, setIsLoadingWord] = useState(true);
+  const [wordNotice, setWordNotice] = useState("");
   const [warningLetters, setWarningLetters] = useState([]);
   const [correctLetters, setCorrectLetters] = useState([]);
   const [wrongLetters, setWrongLetters] = useState([]);
@@ -15,11 +23,52 @@ const GameGrid = () => {
   const [checkWord, setCheckWord] = useState(false);
   const [wordGuessed, setWordGuessed] = useState(false);
   const [score, setScore] = useState(0);
+  const wordRequestRef = useRef(null);
+  const gameReady = playable && !isLoadingWord && secretWord.length === WORD_LENGTH;
+
+  const loadSecretWord = useCallback(async () => {
+    wordRequestRef.current?.abort();
+    const controller = new AbortController();
+    wordRequestRef.current = controller;
+
+    setIsLoadingWord(true);
+    setWordNotice("");
+
+    try {
+      const word = await getRandomWord({
+        length: WORD_LENGTH,
+        commonOnly: true,
+        signal: controller.signal,
+      });
+
+      if (!controller.signal.aborted) {
+        setSecretWord(word);
+      }
+    } catch (error) {
+      if (controller.signal.aborted) return;
+
+      console.warn("Unable to load a word from Word Checker:", error);
+      setSecretWord(randomWord());
+      setWordNotice("Word Checker unavailable. Using the offline word list.");
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsLoadingWord(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSecretWord();
+
+    return () => {
+      wordRequestRef.current?.abort();
+    };
+  }, [loadSecretWord]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
       const { key, keyCode } = event;
-      if (playable) {
+      if (gameReady) {
         //valid input
         if (index < secretWord.length && keyCode >= 65 && keyCode <= 90) {
           setGameHistory((current) => {
@@ -60,11 +109,14 @@ const GameGrid = () => {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [gameHistory, index, attemptNumber]);
+  }, [attemptNumber, gameHistory, gameReady, index, secretWord.length]);
 
   useEffect(() => {
-    if (checkWord && playable) {
-      if (wordExists(gameHistory[attemptNumber].join(""))) {
+    if (checkWord && gameReady) {
+      const guessedWord = gameHistory[attemptNumber].join("");
+      const isAcceptedGuess = guessedWord === secretWord || wordExists(guessedWord);
+
+      if (isAcceptedGuess) {
         gameHistory[attemptNumber].forEach((letter, j) => {
           const tmpLetter = testLetter(secretWord, letter, j);
 
@@ -93,7 +145,7 @@ const GameGrid = () => {
           alert("Enter a " + secretWord.length + " Letter word");
         } else alert("Word does not exist");
       }
-      if (gameHistory[attemptNumber].join("") === secretWord) {
+      if (guessedWord === secretWord) {
         setWordGuessed(true);
         setPlayable(false);
         setScore(score + wordValue(secretWord));
@@ -104,7 +156,7 @@ const GameGrid = () => {
     checkWord,
     gameHistory,
     attemptNumber,
-    playable,
+    gameReady,
     secretWord,
     correctLetters,
     wrongLetters,
@@ -112,10 +164,13 @@ const GameGrid = () => {
   ]);
 
   const handleClick = (letter) => {
-    if (playable)
+    if (gameReady)
       switch (letter.target.textContent) {
         case "enter":
-          if (wordExists(gameHistory[attemptNumber].join(""))) {
+          if (
+            gameHistory[attemptNumber].join("") === secretWord ||
+            wordExists(gameHistory[attemptNumber].join(""))
+          ) {
             setCheckWord(true);
           } else {
             if (gameHistory[attemptNumber].join("").length < secretWord.length) {
@@ -168,14 +223,15 @@ const GameGrid = () => {
 
   function playAgain() {
     setAttemptNumber(0);
-    setGameHistory(Array.from(Array(6), () => new Array(6).fill(null)));
-    setSecretWord(randomWord());
+    setGameHistory(createEmptyHistory());
+    setSecretWord("");
     setWordGuessed(false);
     setIndex(0);
     setPlayable(true);
     setWarningLetters([]);
     setCorrectLetters([]);
     setWrongLetters([]);
+    loadSecretWord();
   }
 
   function updateClass(row, j) {
@@ -201,6 +257,9 @@ const GameGrid = () => {
   return (
     <div className="gameGrid">
       <ScoreCard score={score} attemptNumber={attemptNumber} wordValue={wordValue(secretWord)} />
+      <p className="word-status" aria-live="polite">
+        {isLoadingWord ? "Loading a word…" : wordNotice}
+      </p>
       <div className="container">
         {/* Create the grid */}
         {gameHistory.map((row, i) => {
@@ -213,6 +272,7 @@ const GameGrid = () => {
                     id={updateKeys(secretWord, letter, j, i)}
                     key={i + "_" + j + "_" + letter}
                     onClick={() => handleBoxClick(i, j, letter)}
+                    disabled={isLoadingWord}
                   >
                     {letter}
                   </button>
@@ -222,7 +282,7 @@ const GameGrid = () => {
           );
         })}
         {/* Show hidden word */}
-        {!playable && !wordGuessed && (
+        {!isLoadingWord && !playable && !wordGuessed && (
           <div className="row">
             {secretWord.split("").map((letter, i) => {
               return (
@@ -238,7 +298,7 @@ const GameGrid = () => {
           </div>
         )}
         {/* Play Again Butotn */}
-        {!playable && (
+        {!isLoadingWord && !playable && (
           <button className="play-again" onClick={playAgain} autoFocus>
             Play Again?
           </button>
@@ -249,6 +309,7 @@ const GameGrid = () => {
         correctLetters={correctLetters}
         wrongLetters={wrongLetters}
         handleClick={handleClick}
+        disabled={!gameReady}
       />
     </div>
   );

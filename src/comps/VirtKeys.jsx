@@ -1,6 +1,12 @@
 import React from "react";
 
-const VirtKeys = ({ warningLetters, correctLetters, wrongLetters, handleClick }) => {
+const VirtKeys = ({
+  warningLetters,
+  correctLetters,
+  wrongLetters,
+  handleClick,
+  disabled = false,
+}) => {
   const keys = [
     ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
     ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
@@ -48,6 +54,7 @@ const VirtKeys = ({ warningLetters, correctLetters, wrongLetters, handleClick })
                     id={allLettersData[i][j]}
                     key={i + " " + j + " " + letter}
                     onClick={handleClick}
+                    disabled={disabled}
                   >
                     {letter}
                   </button>
