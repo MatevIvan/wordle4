@@ -1,16 +1,10 @@
-const WORD_CHECKER_URL =
-  "https://word-checker-api.p.rapidapi.com/v1/generator/random-word";
-const WORD_CHECKER_HOST = "word-checker-api.p.rapidapi.com";
+const WORD_CHECKER_URL = import.meta.env.DEV
+  ? "/api/word-checker"
+  : import.meta.env.VITE_WORD_CHECKER_PROXY_URL?.trim();
 
-export async function getRandomWord({
-  length = 6,
-  commonOnly = true,
-  signal,
-} = {}) {
-  const apiKey = import.meta.env.VITE_WORD_CHECKER_API_KEY?.trim();
-
-  if (!apiKey) {
-    throw new Error("VITE_WORD_CHECKER_API_KEY is not configured");
+export async function getRandomWord({ length = 6, commonOnly = true, signal } = {}) {
+  if (!WORD_CHECKER_URL) {
+    throw new Error("VITE_WORD_CHECKER_PROXY_URL is not configured");
   }
 
   const query = new URLSearchParams({
@@ -19,13 +13,7 @@ export async function getRandomWord({
     is_common: commonOnly ? "1" : "0",
   });
 
-  const response = await fetch(`${WORD_CHECKER_URL}?${query}`, {
-    headers: {
-      "x-rapidapi-host": WORD_CHECKER_HOST,
-      "x-rapidapi-key": apiKey,
-    },
-    signal,
-  });
+  const response = await fetch(`${WORD_CHECKER_URL}?${query}`, { signal });
 
   if (!response.ok) {
     throw new Error(`Word Checker request failed with status ${response.status}`);

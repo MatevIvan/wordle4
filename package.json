@@ -2,9 +2,11 @@
   "name": "wordle4",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.19.0",
   "type": "module",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.12.0",
+    "npm": ">=11.3.0"
   },
   "dependencies": {
     "react": "19.2.8",
