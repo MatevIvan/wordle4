@@ -6,11 +6,8 @@ guess. Try the game [here](https://matevivan.github.io/wordle4/).
 
 ## Screenshot
 
-Add a mid-game screenshot here once the image is ready:
-
+Mid game screenshot:
 ![wordle4 mid-game screenshot](./docs/wordle_mid_game.png)
-
-If you use a different filename or folder, update the image path above to match.
 
 ## How the game works
 
@@ -73,15 +70,6 @@ and adds the key server-side, avoiding Word Checker's restrictive CORS header.
 The previous `VITE_WORD_CHECKER_API_KEY` name is temporarily supported by the
 development proxy, but should be renamed because `VITE_` variables are intended
 for browser-visible values.
-
-## Useful commands
-
-```sh
-npm start       # Run the local development server
-npm run build   # Create a production build in dist/
-npm run preview # Preview the production build locally
-npm run deploy  # Build and publish dist/ with gh-pages
-```
 
 ## Production API notes
 
