@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { randomWord, testLetter, wordExists, wordValue } from "./helpers/Helpers";
-import { getRandomWord } from "../services/wordChecker";
+import { checkWordExists, getRandomWord } from "../services/wordChecker";
+import Popup from "./Popup";
 import ScoreCard from "./ScoreCard";
 import VirtKeys from "./VirtKeys";
 
@@ -20,11 +21,29 @@ const GameGrid = () => {
   const [correctLetters, setCorrectLetters] = useState([]);
   const [wrongLetters, setWrongLetters] = useState([]);
   const [playable, setPlayable] = useState(true);
-  const [checkWord, setCheckWord] = useState(false);
+  const [isCheckingWord, setIsCheckingWord] = useState(false);
   const [wordGuessed, setWordGuessed] = useState(false);
+  const [popupMessage, setPopupMessage] = useState("");
   const [score, setScore] = useState(0);
   const wordRequestRef = useRef(null);
+  const guessRequestRef = useRef(null);
   const gameReady = playable && !isLoadingWord && secretWord.length === WORD_LENGTH;
+  const inputReady = gameReady && !isCheckingWord && !popupMessage;
+
+  const closePopup = useCallback(() => {
+    setPopupMessage("");
+  }, []);
+
+  const showGuessError = useCallback(
+    (guessedWord) => {
+      if (guessedWord.length < secretWord.length) {
+        setPopupMessage(`Enter a ${secretWord.length}-letter word.`);
+      } else {
+        setPopupMessage("That word is not in the accepted word list.");
+      }
+    },
+    [secretWord.length],
+  );
 
   const loadSecretWord = useCallback(async () => {
     wordRequestRef.current?.abort();
@@ -62,13 +81,97 @@ const GameGrid = () => {
 
     return () => {
       wordRequestRef.current?.abort();
+      guessRequestRef.current?.abort();
+      guessRequestRef.current = null;
     };
   }, [loadSecretWord]);
+
+  const submitGuess = useCallback(async () => {
+    if (!gameReady || guessRequestRef.current) return;
+
+    const guessedWord = gameHistory[attemptNumber].join("");
+
+    if (guessedWord.length < secretWord.length) {
+      showGuessError(guessedWord);
+      return;
+    }
+
+    let isAcceptedGuess = guessedWord === secretWord || wordExists(guessedWord);
+
+    if (!isAcceptedGuess) {
+      const controller = new AbortController();
+      guessRequestRef.current = controller;
+      setIsCheckingWord(true);
+
+      try {
+        isAcceptedGuess = await checkWordExists(guessedWord, {
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+
+        console.warn("Unable to validate a word with Word Checker:", error);
+        setPopupMessage("Unable to check that word right now. Please try again.");
+        return;
+      } finally {
+        if (guessRequestRef.current === controller) {
+          guessRequestRef.current = null;
+          setIsCheckingWord(false);
+        }
+      }
+    }
+
+    if (!isAcceptedGuess) {
+      showGuessError(guessedWord);
+      return;
+    }
+
+    gameHistory[attemptNumber].forEach((letter, position) => {
+      const letterState = testLetter(secretWord, letter, position);
+
+      if (letterState === "wrong-letter") {
+        setWrongLetters((current) =>
+          current.includes(letter) ? current : [...current, letter],
+        );
+      } else if (letterState === "correct-letter") {
+        setCorrectLetters((current) =>
+          current.includes(letter) ? current : [...current, letter],
+        );
+        setWarningLetters((current) =>
+          current.filter((warningLetter) => warningLetter !== letter),
+        );
+      } else if (letterState === "warning-letter") {
+        setWarningLetters((current) => {
+          if (current.includes(letter) || correctLetters.includes(letter)) {
+            return current;
+          }
+
+          return [...current, letter];
+        });
+      }
+    });
+
+    setAttemptNumber((current) => current + 1);
+    setIndex(0);
+
+    if (guessedWord === secretWord) {
+      setWordGuessed(true);
+      setPlayable(false);
+      setScore((current) => current + wordValue(secretWord));
+    }
+  }, [
+    attemptNumber,
+    correctLetters,
+    gameHistory,
+    gameReady,
+    secretWord,
+    showGuessError,
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
       const { key, keyCode } = event;
-      if (gameReady) {
+      if (inputReady) {
         //valid input
         if (index < secretWord.length && keyCode >= 65 && keyCode <= 90) {
           setGameHistory((current) => {
@@ -80,7 +183,7 @@ const GameGrid = () => {
         }
         // enter is pressed
         if (keyCode === 13) {
-          setCheckWord(true);
+          submitGuess();
         }
         //Delete is pressed
         if (index >= 0 && keyCode === 8) {
@@ -109,74 +212,20 @@ const GameGrid = () => {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [attemptNumber, gameHistory, gameReady, index, secretWord.length]);
-
-  useEffect(() => {
-    if (checkWord && gameReady) {
-      const guessedWord = gameHistory[attemptNumber].join("");
-      const isAcceptedGuess = guessedWord === secretWord || wordExists(guessedWord);
-
-      if (isAcceptedGuess) {
-        gameHistory[attemptNumber].forEach((letter, j) => {
-          const tmpLetter = testLetter(secretWord, letter, j);
-
-          // Update letters based on correctness
-          if (tmpLetter === "wrong-letter") {
-            if (!wrongLetters.includes(letter)) {
-              setWrongLetters((current) => [...current, letter]);
-            }
-          } else if (tmpLetter === "correct-letter") {
-            if (!correctLetters.includes(letter)) {
-              setCorrectLetters((current) => [...current, letter]);
-            }
-            if (warningLetters.includes(letter)) {
-              setWarningLetters((current) => current.filter((letters) => letters !== letter));
-            }
-          } else if (tmpLetter === "warning-letter") {
-            if (!warningLetters.includes(letter) && !correctLetters.includes(letter)) {
-              setWarningLetters((current) => [...current, letter]);
-            }
-          }
-        });
-        setAttemptNumber((prevAttemptNumber) => prevAttemptNumber + 1);
-        setIndex(0);
-      } else {
-        if (gameHistory[attemptNumber].join("").length < secretWord.length) {
-          alert("Enter a " + secretWord.length + " Letter word");
-        } else alert("Word does not exist");
-      }
-      if (guessedWord === secretWord) {
-        setWordGuessed(true);
-        setPlayable(false);
-        setScore(score + wordValue(secretWord));
-      }
-    }
-    setCheckWord(false);
   }, [
-    checkWord,
-    gameHistory,
     attemptNumber,
-    gameReady,
-    secretWord,
-    correctLetters,
-    wrongLetters,
-    warningLetters,
+    gameHistory,
+    index,
+    inputReady,
+    secretWord.length,
+    submitGuess,
   ]);
 
   const handleClick = (letter) => {
-    if (gameReady)
+    if (inputReady)
       switch (letter.target.textContent) {
         case "enter":
-          if (
-            gameHistory[attemptNumber].join("") === secretWord ||
-            wordExists(gameHistory[attemptNumber].join(""))
-          ) {
-            setCheckWord(true);
-          } else {
-            if (gameHistory[attemptNumber].join("").length < secretWord.length) {
-              alert("Enter a 6 Letter word");
-            } else alert("Word does not exist");
-          }
+          submitGuess();
           break;
         case "delete":
           if (index >= 0) {
@@ -222,10 +271,14 @@ const GameGrid = () => {
   }
 
   function playAgain() {
+    guessRequestRef.current?.abort();
+    guessRequestRef.current = null;
     setAttemptNumber(0);
     setGameHistory(createEmptyHistory());
     setSecretWord("");
     setWordGuessed(false);
+    setIsCheckingWord(false);
+    setPopupMessage("");
     setIndex(0);
     setPlayable(true);
     setWarningLetters([]);
@@ -258,7 +311,11 @@ const GameGrid = () => {
     <div className="gameGrid">
       <ScoreCard score={score} attemptNumber={attemptNumber} wordValue={wordValue(secretWord)} />
       <p className="word-status" aria-live="polite">
-        {isLoadingWord ? "Loading a word…" : wordNotice}
+        {isLoadingWord
+          ? "Loading a word…"
+          : isCheckingWord
+            ? "Checking word…"
+            : wordNotice}
       </p>
       <div className="container">
         {/* Create the grid */}
@@ -309,8 +366,9 @@ const GameGrid = () => {
         correctLetters={correctLetters}
         wrongLetters={wrongLetters}
         handleClick={handleClick}
-        disabled={!gameReady}
+        disabled={!inputReady}
       />
+      <Popup message={popupMessage} onClose={closePopup} />
     </div>
   );
 };
